@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches-ignore: [main]   # main is handled by cd.yml
   pull_request:
     branches: [main]
 
