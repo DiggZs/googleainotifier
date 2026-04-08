@@ -2,7 +2,7 @@ name: CD
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
 
 # Required for Workload Identity Federation
 permissions:
@@ -10,13 +10,38 @@ permissions:
   id-token: write
 
 env:
-  REGION: us-central1
   IMAGE_BASE: google-ai-notifier
 
 jobs:
+  # ── Resolve environment config from branch ───────────────────────────────────
+  setup:
+    name: Resolve Environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.cfg.outputs.environment }}
+      tf_bucket:   ${{ steps.cfg.outputs.tf_bucket }}
+      tf_prefix:   ${{ steps.cfg.outputs.tf_prefix }}
+      var_file:    ${{ steps.cfg.outputs.var_file }}
+
+    steps:
+      - id: cfg
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "environment=production"                  >> "$GITHUB_OUTPUT"
+            echo "tf_bucket=c3b-ainotifier-prod"          >> "$GITHUB_OUTPUT"
+            echo "tf_prefix=terraform"                    >> "$GITHUB_OUTPUT"
+            echo "var_file=environments/prod.tfvars"      >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=development"                >> "$GITHUB_OUTPUT"
+            echo "tf_bucket=c3b-ainotifier-dev"           >> "$GITHUB_OUTPUT"
+            echo "tf_prefix=terraform"                    >> "$GITHUB_OUTPUT"
+            echo "var_file=environments/dev.tfvars"       >> "$GITHUB_OUTPUT"
+          fi
+
   # ── Gate: lint + test must pass before we touch infrastructure ──────────────
   test:
     name: Lint & Test
+    needs: setup
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,11 +58,12 @@ jobs:
   # ── Build Docker image and push to Artifact Registry ────────────────────────
   build:
     name: Build & Push Image
-    needs: test
+    needs: [setup, test]
     runs-on: ubuntu-latest
+    environment: ${{ needs.setup.outputs.environment }}
     outputs:
       image_url: ${{ steps.meta.outputs.image_url }}
-      digest: ${{ steps.build.outputs.digest }}
+      digest:    ${{ steps.build.outputs.digest }}
 
     steps:
       - uses: actions/checkout@v4
@@ -49,13 +75,17 @@ jobs:
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+        run: |
+          REGION=$(grep '^region' "terraform/${{ needs.setup.outputs.var_file }}" | awk -F'"' '{print $2}')
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
-      - name: Set image metadata
+      - name: Set image base URL
         id: meta
         run: |
-          BASE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.IMAGE_BASE }}/${{ env.IMAGE_BASE }}"
-          echo "image_url=${BASE}" >> "$GITHUB_OUTPUT"
+          VAR_FILE="terraform/${{ needs.setup.outputs.var_file }}"
+          REGION=$(grep '^region' "$VAR_FILE" | awk -F'"' '{print $2}')
+          PROJECT=$(grep '^project_id' "$VAR_FILE" | awk -F'"' '{print $2}')
+          echo "image_url=${REGION}-docker.pkg.dev/${PROJECT}/${{ env.IMAGE_BASE }}/${{ env.IMAGE_BASE }}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -69,16 +99,15 @@ jobs:
           tags: |
             ${{ steps.meta.outputs.image_url }}:${{ github.sha }}
             ${{ steps.meta.outputs.image_url }}:latest
-          # Use GitHub Actions cache to speed up subsequent builds
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   # ── Terraform: provision / update GCP infrastructure ────────────────────────
   terraform:
-    name: Terraform Apply
-    needs: build
+    name: Terraform Apply (${{ needs.setup.outputs.environment }})
+    needs: [setup, build]
     runs-on: ubuntu-latest
-    environment: production   # Optional: add a GitHub Environment for approval gates
+    environment: ${{ needs.setup.outputs.environment }}
 
     steps:
       - uses: actions/checkout@v4
@@ -98,16 +127,15 @@ jobs:
         working-directory: terraform
         run: |
           terraform init \
-            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="prefix=google-ai-notifier"
+            -backend-config="bucket=${{ needs.setup.outputs.tf_bucket }}" \
+            -backend-config="prefix=${{ needs.setup.outputs.tf_prefix }}"
 
       - name: Terraform Plan
         working-directory: terraform
         run: |
           terraform plan -out=tfplan \
-            -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
+            -var-file="${{ needs.setup.outputs.var_file }}" \
             -var="image_url=${{ needs.build.outputs.image_url }}@${{ needs.build.outputs.digest }}" \
-            -var="chat_space_name=${{ secrets.CHAT_SPACE_NAME }}" \
             -var="github_repo=${{ github.repository }}"
 
       - name: Terraform Apply

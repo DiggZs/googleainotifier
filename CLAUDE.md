@@ -93,17 +93,14 @@ npm run lint      # eslint src/
 
 ## GitHub Secrets Required
 
-Set these in **Settings → Secrets and variables → Actions**:
+Secrets are scoped to **GitHub Environments** (`development` and `production`) so each environment can target a different GCP project.
 
-| Secret | Value |
-|---|---|
-| `GCP_PROJECT_ID` | Your GCP project ID |
-| `GCP_WIF_PROVIDER` | `terraform output wif_provider` after bootstrap |
-| `GCP_SERVICE_ACCOUNT` | `terraform output deployer_service_account` after bootstrap |
-| `TF_STATE_BUCKET` | GCS bucket name for Terraform state (pre-created manually) |
-| `CHAT_SPACE_NAME` | Google Chat space name, e.g. `spaces/ABC123` |
+| Secret | Environment | Value |
+|---|---|---|
+| `GCP_WIF_PROVIDER` | both | `terraform output wif_provider` after bootstrap |
+| `GCP_SERVICE_ACCOUNT` | both | `terraform output deployer_service_account` after bootstrap |
 
-> No API key secrets needed — Gemini access is via Vertex AI using the bot's service account (ADC). The service account is granted `roles/aiplatform.user` by Terraform.
+> `project_id`, `chat_space_name`, and `region` now live in `terraform/environments/dev.tfvars` and `prod.tfvars` — not in GitHub Secrets. No API key secrets needed; Gemini auth is handled by the bot's service account via ADC.
 
 ---
 
@@ -111,49 +108,57 @@ Set these in **Settings → Secrets and variables → Actions**:
 
 These steps are done once manually before the CD pipeline can run autonomously.
 
-### 1. Create a GCS bucket for Terraform state
+### 1. Create GCS buckets for Terraform state
 
 ```bash
-gcloud storage buckets create gs://YOUR_TF_STATE_BUCKET \
-  --project=YOUR_PROJECT_ID \
-  --location=US
+# Dev
+gcloud storage buckets create gs://c3b-ainotifier-dev \
+  --project=YOUR_DEV_PROJECT_ID --location=US
+
+# Prod
+gcloud storage buckets create gs://c3b-ainotifier-prod \
+  --project=YOUR_PROD_PROJECT_ID --location=US
 ```
 
-### 2. Run Terraform bootstrap
+### 2. Fill in the environment tfvars files
+
+Edit `terraform/environments/dev.tfvars` and `prod.tfvars` with real values for `project_id`, `chat_space_name`, etc.
+
+### 3. Run Terraform bootstrap (repeat for each environment)
 
 ```bash
 cd terraform
-terraform init \
-  -backend-config="bucket=YOUR_TF_STATE_BUCKET" \
-  -backend-config="prefix=google-ai-notifier"
 
+# Dev
+terraform init \
+  -backend-config="bucket=c3b-ainotifier-dev" \
+  -backend-config="prefix=terraform"
 terraform apply \
-  -var="project_id=YOUR_PROJECT_ID" \
-  -var="image_url=us-central1-docker.pkg.dev/YOUR_PROJECT_ID/google-ai-notifier/google-ai-notifier:bootstrap" \
-  -var="chat_space_name=spaces/YOUR_SPACE_ID" \
+  -var-file="environments/dev.tfvars" \
+  -var="image_url=us-central1-docker.pkg.dev/YOUR_DEV_PROJECT/google-ai-notifier/google-ai-notifier:bootstrap" \
+  -var="github_repo=YOUR_ORG/YOUR_REPO"
+
+# Prod (re-init to switch backend)
+terraform init -reconfigure \
+  -backend-config="bucket=c3b-ainotifier-prod" \
+  -backend-config="prefix=terraform"
+terraform apply \
+  -var-file="environments/prod.tfvars" \
+  -var="image_url=us-central1-docker.pkg.dev/YOUR_PROD_PROJECT/google-ai-notifier/google-ai-notifier:bootstrap" \
   -var="github_repo=YOUR_ORG/YOUR_REPO"
 ```
 
-> Note: `image_url` can be a placeholder on bootstrap — Cloud Run won't receive traffic until Cloud Scheduler fires.
+> `image_url` is a placeholder on bootstrap — Cloud Run won't receive traffic until Cloud Scheduler fires.
 
-### 3. Store the Anthropic API key
+### 4. Set GitHub Environment Secrets
 
-```bash
-echo -n "YOUR_ANTHROPIC_KEY" | \
-  gcloud secrets versions add anthropic-api-key \
-  --data-file=- \
-  --project=YOUR_PROJECT_ID
-```
-
-### 4. Set GitHub Secrets
+In GitHub: **Settings → Environments** → create `development` and `production`, then add to each:
 
 ```bash
-# Get outputs from Terraform
-terraform output wif_provider           # → GCP_WIF_PROVIDER
+# Get outputs per environment (run after each terraform apply above)
+terraform output wif_provider              # → GCP_WIF_PROVIDER
 terraform output deployer_service_account  # → GCP_SERVICE_ACCOUNT
 ```
-
-Set those plus `GCP_PROJECT_ID`, `TF_STATE_BUCKET`, and `CHAT_SPACE_NAME` in GitHub.
 
 ### 5. Add the bot to your Chat space
 
