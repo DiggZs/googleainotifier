@@ -10,7 +10,7 @@ A scheduled Google Chat bot that calls Claude (Anthropic) on a cron schedule and
 |---|---|
 | Runtime | Node.js 22, ESM (`"type": "module"`) |
 | Framework | Express (Cloud Run HTTP server) |
-| LLM | Anthropic Claude via `@anthropic-ai/sdk` |
+| LLM | Google Gemini via `@google-cloud/vertexai` (Vertex AI) |
 | Chat API | Google Chat REST API via `google-auth-library` |
 | Container | Docker → Google Artifact Registry |
 | Infra | Terraform → Cloud Run, Cloud Scheduler, Secret Manager |
@@ -84,9 +84,10 @@ npm run lint      # eslint src/
 
 | Variable | Required | Description |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key — sourced from Secret Manager in Cloud Run |
+| `GOOGLE_CLOUD_PROJECT` | Yes | GCP project ID — used by Vertex AI SDK to route requests |
 | `CHAT_SPACE_NAME` | Yes | Google Chat space, e.g. `spaces/ABC123` |
 | `PORT` | No | HTTP port (default: 8080) |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Local dev only | Path to service account key file; not used in Cloud Run (ADC handles it) |
 
 ---
 
@@ -97,10 +98,12 @@ Set these in **Settings → Secrets and variables → Actions**:
 | Secret | Value |
 |---|---|
 | `GCP_PROJECT_ID` | Your GCP project ID |
-| `GCP_WIF_PROVIDER` | Output of `terraform output wif_provider` after bootstrap |
-| `GCP_SERVICE_ACCOUNT` | Output of `terraform output deployer_service_account` after bootstrap |
+| `GCP_WIF_PROVIDER` | `terraform output wif_provider` after bootstrap |
+| `GCP_SERVICE_ACCOUNT` | `terraform output deployer_service_account` after bootstrap |
 | `TF_STATE_BUCKET` | GCS bucket name for Terraform state (pre-created manually) |
 | `CHAT_SPACE_NAME` | Google Chat space name, e.g. `spaces/ABC123` |
+
+> No API key secrets needed — Gemini access is via Vertex AI using the bot's service account (ADC). The service account is granted `roles/aiplatform.user` by Terraform.
 
 ---
 

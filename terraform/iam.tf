@@ -6,9 +6,9 @@ resource "google_service_account" "bot" {
   project      = var.project_id
 }
 
-resource "google_project_iam_member" "bot_secret_accessor" {
+resource "google_project_iam_member" "bot_vertex_user" {
   project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
+  role    = "roles/aiplatform.user"
   member  = "serviceAccount:${google_service_account.bot.email}"
 }
 

@@ -1,19 +1,17 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { VertexAI } from '@google-cloud/vertexai';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const vertex = new VertexAI({
+  project: process.env.GOOGLE_CLOUD_PROJECT,
+  location: 'us-central1',
+});
+
+const model = vertex.getGenerativeModel({ model: 'gemini-2.0-flash-001' });
 
 export async function generateMessage() {
-  const response = await anthropic.messages.create({
-    model: 'claude-opus-4-6',
-    max_tokens: 500,
-    messages: [
-      {
-        role: 'user',
-        // TODO: Replace with your actual prompt
-        content: 'Generate a brief daily summary message for the team.',
-      },
-    ],
-  });
+  const result = await model.generateContent(
+    // TODO: Replace with your actual prompt
+    'Generate a brief daily summary message for the team.',
+  );
 
-  return response.content[0].text;
+  return result.response.candidates[0].content.parts[0].text;
 }
