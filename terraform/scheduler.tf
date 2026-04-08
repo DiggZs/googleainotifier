@@ -1,7 +1,7 @@
 resource "google_cloud_scheduler_job" "bot" {
   name      = "google-ai-notifier-job"
   project   = var.project_id
-  region    = var.region
+  region    = var.scheduler_region
   schedule  = var.scheduler_cron
   time_zone = var.scheduler_timezone
 

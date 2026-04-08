@@ -35,3 +35,9 @@ variable "scheduler_timezone" {
   type        = string
   default     = "America/New_York"
 }
+
+variable "scheduler_region" {
+  description = "Region for Cloud Scheduler job (must be a valid Scheduler region — may differ from Cloud Run region)"
+  type        = string
+  default     = "australia-southeast1"
+}

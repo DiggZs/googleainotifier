@@ -3,6 +3,8 @@ resource "google_cloud_run_v2_service" "bot" {
   location = var.region
   project  = var.project_id
 
+  deletion_protection = false
+
   # Only Cloud Scheduler (internal) can reach this — no public ingress
   ingress = "INGRESS_TRAFFIC_INTERNAL_ONLY"
 
