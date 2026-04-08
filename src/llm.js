@@ -2,7 +2,7 @@ import { VertexAI } from '@google-cloud/vertexai';
 
 const vertex = new VertexAI({
   project: process.env.GOOGLE_CLOUD_PROJECT,
-  location: 'us-central1',
+  location: process.env.GOOGLE_CLOUD_REGION,
 });
 
 const model = vertex.getGenerativeModel({ model: 'gemini-2.0-flash-001' });

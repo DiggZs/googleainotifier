@@ -1,5 +1,5 @@
 project_id         = "YOUR_DEV_PROJECT_ID"
-region             = "us-central1"
+region             = "australia-southeast2"
 chat_space_name    = "spaces/YOUR_DEV_SPACE_ID"
 scheduler_cron     = "0 9 * * 1-5"
 scheduler_timezone = "America/New_York"

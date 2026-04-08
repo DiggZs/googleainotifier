@@ -27,6 +27,11 @@ resource "google_cloud_run_v2_service" "bot" {
         value = var.project_id
       }
 
+      env {
+        name  = "GOOGLE_CLOUD_REGION"
+        value = var.region
+      }
+
       resources {
         limits = {
           cpu    = "1"
